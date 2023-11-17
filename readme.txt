@@ -12,7 +12,7 @@ Features
 
 Installation
 
-To install the Mini Observatory Data Manager, follow these steps:
+To install the Data Manager, follow these steps:
 
     Ensure Python is installed on your system.
     Clone this repository or download the source code.
@@ -24,7 +24,6 @@ Usage
 Launch the application by running python main.py. Use the GUI to navigate through various functions like selecting root directories, renaming files and directories, and deleting unwanted folders.
 Contributing
 
-Contributions to the Mini Observatory Data Manager are welcome! Please read our contributing guidelines to get started.
 License
 
 This project is licensed under the MIT License.
