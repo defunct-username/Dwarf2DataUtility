@@ -18,6 +18,12 @@ To install the Data Manager, follow these steps:
     Clone this repository or download the source code.
     (Optional) Create a virtual environment for the project.
     Install required dependencies: pip install -r requirements.txt (if applicable).
+    If you want to compile to .exe you can use this:
+    Step 1.
+                pip install pyinstaller
+    Step 2.
+                pyinstaller --onefile --noconsole --name "Dwarf 2 Data Manager" main.py
+    Step 3. Copy the "Dwarf 2 Data Manager.exe" to your favorite astrophotography directory. When you run the .exe a config.ini will be created in the same directory as the .exe.
 
 Usage
 
