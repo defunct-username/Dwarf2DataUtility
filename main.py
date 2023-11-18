@@ -27,42 +27,48 @@ import datetime
 import configparser
 import shutil
 from datetime import datetime
+import subprocess
+import os
+celestial_objects = []  # Global declaration
+celestial_stats= []  # Global declaration
 
 
-def load_config():
-    config_file = 'config.ini'
+def read_config():
     config = configparser.ConfigParser()
+    config.read('config.ini')
+    return config
 
-    # Check if the config file exists
-    if not os.path.exists(config_file):
-        # Create a default config file
-        config['Directories'] = {'root_paths': ''}
-        with open(config_file, 'w') as configfile:
-            config.write(configfile)
-    else:
-        # Read existing config file
-        config.read(config_file)
-
-    paths = config.get('Directories', 'root_paths').split(';') if config.has_section('Directories') else []
-    return paths
-
+def write_config(config):
+    with open('config.ini', 'w') as configfile:
+        config.write(configfile)
 
 
 
 def save_config(paths):
-    config = configparser.ConfigParser()
+    config = read_config()
     config['Directories'] = {'root_paths': ';'.join(paths)}
-    with open('config.ini', 'w') as configfile:
-        config.write(configfile)
+    write_config(config)
+
 
 
 
 def add_root_directory():
     directory = filedialog.askdirectory()
     if directory:
-        if directory not in root_paths:
-            root_paths.append(directory)  # Use append for list
-        save_config(root_paths)
+        config = read_config()  # Read the current config
+
+        # Fetch existing root paths and split into a list, handling the case where the key might not exist
+        existing_paths = config.get('Directories', 'root_paths', fallback='').split(';') if config.has_section('Directories') else []
+
+        if directory not in existing_paths:
+            existing_paths.append(directory)  # Append the new directory to the list
+
+        # Save the updated paths back to the config
+        save_config(existing_paths)
+
+
+
+
 
 
 def create_menu(root):
@@ -72,6 +78,7 @@ def create_menu(root):
     file_menu = Menu(menu_bar, tearoff=0)
     menu_bar.add_cascade(label="File", menu=file_menu)
     file_menu.add_command(label="Select Root Directory", command=add_root_directory)
+    #file_menu.add_command(label="Set Sirilic Path", command=set_sirilic_path)
 
 
 def check_and_select_directory():
@@ -88,6 +95,19 @@ def select_directory():
         return True
     return False
 
+def stack_setup():
+    print("Stack setup called")  # Debugging line
+    if check_and_select_directory():
+        print("Directory selected:", root.directory)  # Debugging line
+        parse_directories_and_log_stats(root.directory)
+
+
+
+def stack_setup():
+    global celestial_objects, celestial_stats
+    if check_and_select_directory():
+        celestial_objects, celestial_stats = parse_directories_and_log_stats(root.directory)
+        update_object_list(celestial_objects)
 
 def rename_directories():
     if check_and_select_directory():
@@ -119,6 +139,10 @@ def rename_directories():
                             renamed_dirs.append(f"'{directory}' renamed to '{new_dir_name}'")
         for message in renamed_dirs:
             log_message(message)
+
+def update_object_list(celestial_objects):
+    for obj in celestial_objects:()
+
 
 
 def rename_images():
@@ -164,58 +188,211 @@ def delete_dwarf_goto_dirs():
                 log_message(f"Error deleting directory {dir_path}: {error}")
 
 
+def parse_directories_and_log_stats(root_dir):
+    celestial_stats = {}
+
+    for directory in os.listdir(root_dir):
+        dir_path = os.path.join(root_dir, directory)
+        if os.path.isdir(dir_path):
+            json_file_path = os.path.join(dir_path, 'shotsInfo.json')
+            if os.path.exists(json_file_path):
+                with open(json_file_path, 'r') as file:
+                    data = json.load(file)
+                    target = data.get('target', '').strip()
+                    exp = data.get('exp', 0)
+                    frames_taken = data.get('shotsTaken', 0)
+                    total_integration = exp * frames_taken
+
+                    if target not in celestial_stats:
+                        celestial_stats[target] = {'total_frames': 0, 'total_integration': 0}
+                    celestial_stats[target]['total_frames'] += frames_taken
+                    celestial_stats[target]['total_integration'] += total_integration
 
 
+    print("Parsing directories in", root_dir)  # Debugging line
+    # Displaying results and storing them for further interaction
+    log_message("Here is a summary of all of the Objects you've captured. Keep up the great work.")
+    celestial_objects = list(celestial_stats.keys())
+    for index, target in enumerate(celestial_objects, start=1):
+        stats = celestial_stats[target]
+        message = f"{index}. {target}: Total Frames = {stats['total_frames']}, Total Integration Time = {stats['total_integration']} seconds"
+        log_message(message)
+
+    return celestial_objects, celestial_stats
+def save_sirilic_path(sirilic_path):
+    config = read_config()
+    config['Settings'] = {'sirilic_path': sirilic_path}
+    write_config(config)
+
+
+
+
+def user_select_object(celestial_objects):
+    while True:
+        try:
+            user_choice = int(input("Enter the number of the object you want to process: "))
+            if 1 <= user_choice <= len(celestial_objects):
+                return celestial_objects[user_choice - 1]
+            else:
+                print("Invalid choice, please try again.")
+        except ValueError:
+            print("Please enter a valid number.")
 def log_message(message):
-    # Insert the message at the end of the text widget and scroll to the end
     console_log.configure(state='normal')  # Enable editing of the widget
-    console_log.insert(tk.END, message + '\n')  # Add newline to separate messages
+    if isinstance(message, list):
+        for msg in message:
+            console_log.insert(tk.END, msg + '\n')  # Display each message on a new line
+    else:
+        console_log.insert(tk.END, message + '\n')  # For a single message
     console_log.configure(state='disabled')  # Disable editing of the widget
     console_log.see(tk.END)  # Scroll to the bottom
+def combine_datasets():
+    if not check_and_select_directory():
+        log_message("No directory selected. Please select a directory first.")
+        return
+
+    root_path = root.directory
+    dir_dict = {}
+
+    # Grouping directories by their base names (before the first "_")
+    for directory in os.listdir(root_path):
+        dir_path = os.path.join(root_path, directory)
+        if os.path.isdir(dir_path) and "_" in directory and not directory.endswith("Megadump") and not directory.startswith("Manual_"):
+            base_name = directory.split("_")[0]
+            if base_name not in dir_dict:
+                dir_dict[base_name] = []
+            dir_dict[base_name].append(directory)
+
+    # Combining directories and moving files
+    for base_name, dirs in dir_dict.items():
+        mega_dump_dir = os.path.join(root_path, f"MEGADUMP_{base_name}")
+        os.makedirs(mega_dump_dir, exist_ok=True)
+
+        for directory in dirs:
+            dir_path = os.path.join(root_path, directory)
+            for file in os.listdir(dir_path):
+                if file.endswith('.fits'):
+                    source_file_path = os.path.join(dir_path, file)
+                    unique_filename = f"{directory}_{file}"  # Prepend the source directory name to ensure uniqueness
+                    destination_file_path = os.path.join(mega_dump_dir, unique_filename)
+
+                    if not os.path.exists(destination_file_path):
+                        shutil.move(source_file_path, destination_file_path)
+                        log_message(f"Moved '{file}' from {directory} to '{unique_filename}' in {mega_dump_dir}")
+                        # Force GUI to update display
+                        root.update_idletasks()
+                    else:
+                        log_message(f"Skipped '{file}' from {directory} as it already exists in {mega_dump_dir}")
+                        # Force GUI to update display
+                        root.update_idletasks()
+
+        log_message(f"Combined datasets for {base_name} into {mega_dump_dir}")
+        # Force GUI to update display
+        root.update_idletasks()
 
 
 
-root_paths = load_config()
+def process_selection():
+    global celestial_objects
+    try:
+        user_choice = int(entry.get())
+        if 1 <= user_choice <= len(celestial_objects):
+            selected_object = celestial_objects[user_choice - 1]
+            log_message(f"User selected {selected_object}")
+        else:
+            log_message("Invalid choice, please try again.")
+    except ValueError:
+        log_message("Please enter a valid number.")
 
 
+root_paths = read_config()
+def clean_up_root():
+    if not check_and_select_directory():
+        log_message("No directory selected. Please select a directory first.")
+        return
+
+    root_path = root.directory
+
+    # Create directories if they don't exist
+    png_dir = os.path.join(root_path, "PNG")
+    jpeg_dir = os.path.join(root_path, "JPEG")
+    mp4_dir = os.path.join(root_path, "MP4")
+
+    for directory in [png_dir, jpeg_dir, mp4_dir]:
+        os.makedirs(directory, exist_ok=True)
+
+    # Move files to respective folders
+    for file in os.listdir(root_path):
+        file_path = os.path.join(root_path, file)
+
+        if file.lower().endswith('.jpeg'):
+            destination_dir = jpeg_dir
+        elif file.lower().endswith('.png'):
+            destination_dir = png_dir
+        elif file.lower().endswith('.mp4'):
+            destination_dir = mp4_dir
+        else:
+            continue  # Skip files that don't match the extensions
+
+        if os.path.isfile(file_path):
+            shutil.move(file_path, os.path.join(destination_dir, file))
+            log_message(f"Moved '{file}' to '{destination_dir}'")
+
+    log_message("Cleaned up root directory.")
+    # Force GUI to update display
+    root.update_idletasks()
+
+# Main window setup
 root = tk.Tk()
 root.title("Mini Observatory Data Manager")
-root.geometry("800x600")  # Resize for better visibility
+root.geometry("1280x720")
 root.configure(bg="black")
-root.directory = ''
 
-# Create the menu
+# Menu creation
 create_menu(root)
 
-# Frame for buttons on the left
+# Frame for left-side buttons
 button_frame = tk.Frame(root, bg="black")
-button_frame.pack(side="left", fill="y", padx=5, pady=5)  # Changed side to "left"
+button_frame.pack(side="left", fill="y", padx=5, pady=5)
+
+# Buttons for various operations
 buttons = {
     "Rename Directories": rename_directories,
     "Rename All Images": rename_images,
+    "Delete all 'Dwarf GOTO' folders": delete_dwarf_goto_dirs,
+    "Clean Up Root": clean_up_root,
+    "Analyze Datasets": stack_setup,
+    "Combine Datasets": combine_datasets,
+    #"Run Sirilic": run_sirilic,
 }
 
+# Packing the operation buttons
 for btn_text, command in buttons.items():
     button = tk.Button(button_frame, text=btn_text, command=command, bg="black", fg="white")
     button.pack(fill="x", padx=5, pady=5)
 
-delete_button = tk.Button(button_frame, text="Delete all 'Dwarf GOTO' folders", command=delete_dwarf_goto_dirs,
-                          bg="black", fg="white")
-delete_button.pack(fill="x", padx=5, pady=5)
+# Frame for selection and submit
+selection_frame = tk.Frame(root, bg="black")
+selection_frame.pack(side="top", fill="x", pady=10)
 
-# Debug console at the bottom
+# Entry for user selection
+entry = tk.Entry(selection_frame)
+entry.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+
+
+
+# Frame for console log
 console_frame = tk.Frame(root, bg="black")
-console_frame.pack(side="bottom", fill="x", padx=5, pady=5)
+console_frame.pack(side="top", fill="both", expand=True, padx=5, pady=5)
 
-# This sets the height of the console_log Text widget to 10 lines (adjust as needed).
-console_log = tk.Text(console_frame, height=100, state='disabled', bg="black", fg="white", wrap=tk.WORD)
-console_log.pack(side="left", fill="x", expand=True)
-
-# Scrollbar for the console_log
+# Console log with vertical scrollbar
+console_log = tk.Text(console_frame, height=10, state='disabled', bg="black", fg="white", wrap=tk.WORD)
 console_scrollbar = tk.Scrollbar(console_frame, command=console_log.yview)
-console_scrollbar.pack(side="left", fill="y")
-console_log['yscrollcommand'] = console_scrollbar.set  # Link scrollbar to console_log
-log_message(
-    "Please select a directory first by clicking 'File' and then clicking 'Select Root Directory'. Rename Directories button will rename each sub-directory to whatever the object name is in that directories shots.Info.json. Rename All Images button will append object name and date prior to the frame number for all images in all sub-directories.")
+console_log['yscrollcommand'] = console_scrollbar.set
+console_scrollbar.pack(side="right", fill="y")
+console_log.pack(side="left", fill="both", expand=True)
+
+# Start the main loop
 root.mainloop()
+
 
